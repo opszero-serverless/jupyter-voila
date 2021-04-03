@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+    - name: Release code
+      env:
+        ECR_IMAGE: ${{ secrets.AWS_ECR_REPOSITORY }}:${GITHUB_SHA}
+      run: |
+        aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ECR_REPOSITORY }}
+        docker build -t ${{ secrets.AWS_ECR_REPOSITORY }}:${GITHUB_SHA} .
+        docker push ${{ secrets.AWS_ECR_REPOSITORY }}:${GITHUB_SHA}
+        curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
+        aws eks update-kubeconfig --name ${{ secrets.K8S_CLUSTER_NAME }}
+        helm upgrade --install ${{ secrets.APP_NAME }} charts/launchsheet --set image.repository=${{ secrets.AWS_ECR_REPOSITORY }}:${GITHUB_SHA}
